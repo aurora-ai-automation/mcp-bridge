@@ -93,7 +93,7 @@ async function streamToN8n(payload, res) {
     const response = await axios.post(N8N_URL, payload, {
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
+        'Accept': 'application/json',
       },
       responseType: 'stream',
       timeout: 60000,
@@ -128,8 +128,8 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => {
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
   console.log(`🚀 MCP Bridge is running!`);
   console.log(`📍 Local: http://localhost:${PORT}`);
   console.log(`📍 Endpoint: /bridge (POST requests)`);
