@@ -62,12 +62,13 @@ function normalizeRequest(payload) {
     id: payload.id !== undefined ? payload.id : Date.now(),
   };
 
-  // Special handling for initialize method
-  if (normalized.method === 'initialize' && (!normalized.params || Object.keys(normalized.params).length === 0)) {
+  // Special handling for initialize method - only if params are missing
+  if (normalized.method === 'initialize' && 
+      (!normalized.params.protocolVersion || !normalized.params.clientInfo)) {
     normalized.params = {
-      protocolVersion: payload.protocolVersion || payload.params?.protocolVersion || '2024-11-05',
-      capabilities: payload.capabilities || payload.params?.capabilities || {},
-      clientInfo: payload.clientInfo || payload.params?.clientInfo || {
+      protocolVersion: normalized.params.protocolVersion || '2024-11-05',
+      capabilities: normalized.params.capabilities || {},
+      clientInfo: normalized.params.clientInfo || {
         name: 'openai-mcp',
         version: '1.0.0'
       }
@@ -83,6 +84,13 @@ async function sendToN8n(payload, sessionKey = 'default') {
     console.log('🔄 Sending to n8n:', N8N_URL);
     
     let sessionId = sessions.get(sessionKey);
+    
+    // If this is an initialize request, clear any existing session
+    if (payload.method === 'initialize') {
+      sessions.delete(sessionKey);
+      sessionId = null;
+      console.log('🔄 Cleared existing session for re-initialization');
+    }
     
     // If this is not an initialize request and no session exists, initialize first
     if (payload.method !== 'initialize' && !sessionId) {
@@ -121,7 +129,7 @@ async function sendToN8n(payload, sessionKey = 'default') {
       'Accept': 'application/json, text/event-stream',
     };
     
-    if (sessionId) {
+    if (sessionId && payload.method !== 'initialize') {
       headers['mcp-session-id'] = sessionId;
       console.log('🔑 Using session ID:', sessionId);
     }
