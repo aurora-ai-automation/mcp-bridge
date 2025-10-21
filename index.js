@@ -87,7 +87,25 @@ async function sendToN8n(payload) {
     });
 
     console.log('📤 n8n response status:', response.status);
-    return response.data;
+    console.log('📤 n8n response data:', JSON.stringify(response.data, null, 2));
+    console.log('📤 n8n response headers:', response.headers);
+    
+    // Parse SSE format if n8n returns it
+    let parsedData = response.data;
+    if (typeof response.data === 'string' && response.data.includes('event: message')) {
+      // Extract JSON from SSE format: "data: {...}\n\n"
+      const dataMatch = response.data.match(/data: (.+?)(?:\n\n|$)/s);
+      if (dataMatch && dataMatch[1]) {
+        try {
+          parsedData = JSON.parse(dataMatch[1]);
+          console.log('📤 Parsed SSE data:', JSON.stringify(parsedData, null, 2));
+        } catch (e) {
+          console.warn('⚠️ Failed to parse SSE data:', e.message);
+        }
+      }
+    }
+    
+    return parsedData;
   } catch (error) {
     console.error('❌ n8n request failed:', error.message);
     if (error.response) {
