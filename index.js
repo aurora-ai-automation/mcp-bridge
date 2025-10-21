@@ -78,6 +78,32 @@ function normalizeRequest(payload) {
 async function sendToN8n(payload) {
   try {
     console.log('🔄 Sending to n8n:', N8N_URL);
+    
+    // If this is not an initialize request, send initialize first
+    if (payload.method !== 'initialize') {
+      console.log('🔧 Auto-initializing first...');
+      await axios.post(N8N_URL, {
+        jsonrpc: '2.0',
+        method: 'initialize',
+        params: {
+          protocolVersion: '2024-11-05',
+          capabilities: {},
+          clientInfo: {
+            name: 'openai-mcp',
+            version: '1.0.0'
+          }
+        },
+        id: 0
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/event-stream',
+        },
+        timeout: 30000,
+      });
+      console.log('✅ Auto-initialize complete');
+    }
+    
     const response = await axios.post(N8N_URL, payload, {
       headers: {
         'Content-Type': 'application/json',
