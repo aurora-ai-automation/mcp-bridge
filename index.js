@@ -4,6 +4,9 @@ import axios from 'axios';
 const app = express();
 const N8N_URL = 'https://n8n.srv971161.hstgr.cloud/mcp/custom-ghl-mcp';
 
+// Store session IDs in memory (keyed by a simple identifier)
+const sessions = new Map();
+
 app.use(express.json({ limit: '10mb' }));
 
 // Health check (to keep Replit alive)
@@ -75,14 +78,16 @@ function normalizeRequest(payload) {
 }
 
 // Send regular HTTP request to n8n
-async function sendToN8n(payload) {
+async function sendToN8n(payload, sessionKey = 'default') {
   try {
     console.log('🔄 Sending to n8n:', N8N_URL);
     
-    // If this is not an initialize request, send initialize first
-    if (payload.method !== 'initialize') {
-      console.log('🔧 Auto-initializing first...');
-      await axios.post(N8N_URL, {
+    let sessionId = sessions.get(sessionKey);
+    
+    // If this is not an initialize request and no session exists, initialize first
+    if (payload.method !== 'initialize' && !sessionId) {
+      console.log('🔧 Auto-initializing to get session ID...');
+      const initResponse = await axios.post(N8N_URL, {
         jsonrpc: '2.0',
         method: 'initialize',
         params: {
@@ -101,20 +106,41 @@ async function sendToN8n(payload) {
         },
         timeout: 30000,
       });
-      console.log('✅ Auto-initialize complete');
+      
+      // Capture session ID from response headers
+      sessionId = initResponse.headers['mcp-session-id'];
+      if (sessionId) {
+        sessions.set(sessionKey, sessionId);
+        console.log('✅ Session ID captured:', sessionId);
+      }
+    }
+    
+    // Build headers with session ID if available
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/event-stream',
+    };
+    
+    if (sessionId) {
+      headers['mcp-session-id'] = sessionId;
+      console.log('🔑 Using session ID:', sessionId);
     }
     
     const response = await axios.post(N8N_URL, payload, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json, text/event-stream',
-      },
+      headers,
       timeout: 30000,
     });
 
     console.log('📤 n8n response status:', response.status);
     console.log('📤 n8n response data:', JSON.stringify(response.data, null, 2));
     console.log('📤 n8n response headers:', response.headers);
+    
+    // Capture session ID if this is an initialize response
+    if (payload.method === 'initialize' && response.headers['mcp-session-id']) {
+      const newSessionId = response.headers['mcp-session-id'];
+      sessions.set(sessionKey, newSessionId);
+      console.log('✅ Session ID stored:', newSessionId);
+    }
     
     // Parse SSE format if n8n returns it
     let parsedData = response.data;
