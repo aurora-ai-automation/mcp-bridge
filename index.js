@@ -23,22 +23,22 @@ app.post('/bridge', async (req, res) => {
     const normalizedPayload = normalizeRequest(payload);
     console.log('✅ Normalized payload:', JSON.stringify(normalizedPayload, null, 2));
 
-    // Check if SSE streaming is requested
+    // Always use regular HTTP (n8n doesn't support SSE)
+    console.log('📨 Sending to n8n via HTTP');
+    const n8nResponse = await sendToN8n(normalizedPayload);
+    
+    // Check if Agent Builder wants SSE format
     const isSSE = req.headers.accept?.includes('text/event-stream');
-
+    
     if (isSSE) {
-      // Set SSE headers
+      // Convert JSON response to SSE format for Agent Builder
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-
-      console.log('🌊 Streaming mode activated');
-      await streamToN8n(normalizedPayload, res);
+      res.write(`data: ${JSON.stringify(n8nResponse)}\n\n`);
+      res.end();
     } else {
-      // Regular HTTP request/response
-      console.log('📨 Regular HTTP mode');
-      const n8nResponse = await sendToN8n(normalizedPayload);
+      // Regular JSON response
       res.json(n8nResponse);
     }
   } catch (error) {
@@ -56,8 +56,20 @@ function normalizeRequest(payload) {
     jsonrpc: payload.jsonrpc || '2.0',
     method: payload.method || payload.action || 'unknown',
     params: payload.params || payload.body || payload.data || {},
-    id: payload.id || Date.now(),
+    id: payload.id !== undefined ? payload.id : Date.now(),
   };
+
+  // Special handling for initialize method
+  if (normalized.method === 'initialize' && (!normalized.params || Object.keys(normalized.params).length === 0)) {
+    normalized.params = {
+      protocolVersion: payload.protocolVersion || payload.params?.protocolVersion || '2024-11-05',
+      capabilities: payload.capabilities || payload.params?.capabilities || {},
+      clientInfo: payload.clientInfo || payload.params?.clientInfo || {
+        name: 'openai-mcp',
+        version: '1.0.0'
+      }
+    };
+  }
 
   return normalized;
 }
@@ -69,7 +81,7 @@ async function sendToN8n(payload) {
     const response = await axios.post(N8N_URL, payload, {
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        'Accept': 'application/json, text/event-stream',
       },
       timeout: 30000,
     });
